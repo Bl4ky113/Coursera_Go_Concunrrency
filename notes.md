@@ -6,6 +6,7 @@ End:
 
 Sessions:
 - 10/01/2024
+- 10/03/2024
 
 ## What and Why Concurrency
 
