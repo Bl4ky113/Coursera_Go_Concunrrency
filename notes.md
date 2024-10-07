@@ -7,6 +7,7 @@ End:
 Sessions:
 - 10/01/2024
 - 10/03/2024
+- 10/07/2024
 
 ## What and Why Concurrency
 
@@ -117,6 +118,18 @@ Since the channel communication and usage needs a sort of syncronization,
 when we fetch the value from one on a routine, we will discreetly do a Wait() for the other channel.
 But it wont stop waiting until the routine sends a value by the channel and the waiting routine can use it.
 
+We can iter through a channel with the range keyword in a for loop. Allowing us to do stuff with each thing that 
+we receive from that channel. This loop might be infinite, that's why we can close the channel by using the 
+funciton close, passing the channel as an argument. It's not that important to close the channel, like a file, 
+but it is if you are using a for loop for fetching the channel data.
+
+### Deadlock
+Is a problem where we have routines that have a mutual or circular dependency. 
+Dependency meaning that one should finish in order to the other to start. 
+Meaning that these will stay forever waiting for the other to finish. 
+Go will help us a little, trowing an fatal error if all routines, including the main one are blocked. But only if ALL routines are blocked.
+This is a very hard stuff to detect if it happens, so be careful whenever you implement a locked concurrent algorithmn.
+
 ### Buffered Channels
 We can define a buffer size for our channel, so we can change the functionality of them.
 First, the default buffer for a channel is 0. This is since the routines are blocked or have to wait until some conditions.
@@ -126,3 +139,67 @@ and in the reciever part, if the buffer is empty, this will be waiting as well.
 The size, is defined in the make() capacity arg:
 fooChan := make(chan int, 2048)
 
+### Select statement
+When we have multiple channels that we have to get, we can wait for both and use them. 
+But if we need only one channel to do something while we are waiting for 2 or more we can use 
+the Select Statement:
+
+select {
+    case foo <- c1:
+        ...
+    case foo <- c2:
+        ...
+    case c3 <- bar:
+        ...
+    ...
+    default:
+        ...
+}
+
+Keep in mind that we can also, while waiting for data, have a case for sending data to another channel,
+which might work as an default case if the channel isn't closed.
+But if we need a normal default case, we can also define it as well.
+
+A good use of the select statement is the usage of abort channels, whenever we are waiting for something and 
+we get an interrupt or anything signal we han handle safely the exit of the function and the concurrency.
+
+### Mutual Exclusion - MutEx
+
+When two routines share variables, there might be errors when one of then changes the variable and interferes the 
+execution of the other routine. This means that the functions are not concurrent-safe with some variable or data,
+for example most of DB writes, updates and deletes are not concurrent-safe. This mainly happens with stuff 
+that firstly reads and then writes data in the machine level of code.
+
+A simple fix for this is just not using functions that write a variable at the same time in concurrency, 
+or restrict this possible interleavings.
+
+We can do this restrictions with MutEx, available in the sync package, which blocks the execution on routines. 
+This is made by using the method Lock() where a routine will execute code that will 
+change the value of a shared variable, blocking ALL other routines which has the mutex instance
+with a call to Lock(). Then after the Locking routine is over, calls Unlock() to let another 
+routine Lock the variable and repeat the cycle until every routine ends.
+
+## Sync Once
+
+When we have a group of routines to execute, we might want to have them share some stuff like variables and 
+what not. This things are generally defined in a init enviroment like the main function, but maybe when we have 
+to execute them from another package we might need to use another function. The problem with this function is that 
+it might not sync well with the routes, so we can use sync.Once and it's method Do().
+Which allow us to block routines until a function is done executing, generally an init function.
+
+## Dinning Phisolophers
+
+The hypotesis of the problem is that we have 5 Phisolophers in a circular table, each one has a bowl of rice, 
+also everyone has 1 chopstick placed at their left side. But in order to eat the rice, they need 
+to use 2 chopstick. What they can do is that they can grab the chopstick at their right, the chopstick of their neighbor.
+Blocking them to eat the rice.
+
+Now the big problem is that if everyone picks their chopstick,
+there wouldn't be any chopstick left to complete the pair. So everyone will starve.
+Making a Deadlock.
+
+One solution to the problem is that each Phisolophers would take the chopstick with the lowest index number available to them.
+So 0th would take the right chopstick of 4th and 3rd would take 4th's left chopstick. Meaning that 4th would starve.
+This solution doesn't deadlock itself, but will starve the 4 routine.
+
+One that I thought was that we cycle in pairs in a group way, using module of the number of Phisolophers.
