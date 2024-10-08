@@ -20,12 +20,18 @@ type Philosopher struct {
     rightChopstick *Chopstick
     food int
     number int
+    done bool
 }
+
+var LunchInProgress bool = true
 
 func (phi *Philosopher) eatRice (outGroup *sync.WaitGroup, outChannel chan bool) (bool) {
     if phi.food <= 0 {
-        fmt.Printf("Phi. #%d finished eating fried rice\n", phi.number)
-
+        if !phi.done {
+            fmt.Printf("Phi. #%d finished eating fried rice\n", phi.number)
+            outChannel <- true
+            phi.done = true
+        }
         outGroup.Done()
         return true
     } 
@@ -39,6 +45,7 @@ func (phi *Philosopher) eatRice (outGroup *sync.WaitGroup, outChannel chan bool)
     phi.leftChopstick.Unlock()
     phi.rightChopstick.Unlock()
 
+    outChannel <- false
     outGroup.Done()
     return false
 }
@@ -72,6 +79,7 @@ func createPhilosophers (phiArr *[]Philosopher, chopArr *[]Chopstick) {
         (*phiArr)[i] = *new(Philosopher)
         (*phiArr)[i].food = 3
         (*phiArr)[i].number = i + 1
+        (*phiArr)[i].done = false
         (*phiArr)[i].leftChopstick = &(*chopArr)[i]
         (*phiArr)[i].rightChopstick = &(*chopArr)[((i - 1) + 5) % NUM_PHILOSOPHERS]
     }
@@ -83,25 +91,50 @@ func handlePhilosophersLunch (phiArr *[]Philosopher, outerWg *sync.WaitGroup) {
     defer outerWg.Done()
 
     eatingPhiGroup := new(sync.WaitGroup)
-    eatingPhiChannel := make(chan bool)
+    eatingPhiChannel := make(chan bool, 2)
+    exitChannel := make(chan bool)
+
     numPhiDoneEating := 0
 
-    for numPhiDoneEating < NUM_PHILOSOPHERS {
+    go handleMealsProgress(&numPhiDoneEating, eatingPhiChannel, exitChannel)
+
+    for LunchInProgress && numPhiDoneEating < NUM_PHILOSOPHERS {
         for i := 0; i < NUM_PHILOSOPHERS; i++ {
             for j := i; (j - i) <= MAX_EATING_PHILOSOPHERS; j += 2 {
                 eatingPhiGroup.Add(1)
-                (*phiArr)[j % NUM_PHILOSOPHERS].eatRice(eatingPhiGroup, eatingPhiChannel)
-            }
-
-            if (*phiArr)[i].food <= 0 {
-                numPhiDoneEating++
+                go (*phiArr)[j % NUM_PHILOSOPHERS].eatRice(eatingPhiGroup, eatingPhiChannel)
             }
             
             eatingPhiGroup.Wait()
-            fmt.Printf("Round Done!\n")
+
+            if !LunchInProgress || numPhiDoneEating >= NUM_PHILOSOPHERS {
+                break
+            }
+
+            fmt.Printf("Round Done!\t%d\t%d\t%v\n", numPhiDoneEating, NUM_PHILOSOPHERS, LunchInProgress)
+
+            select {
+            case <- exitChannel:
+                LunchInProgress = false
+            default:
+            }
         }
     }
 
     fmt.Printf("\nLunch Done!\n")
+    return
+}
+
+func handleMealsProgress (numPhiDoneEating *int, eatingPhiChannel chan bool, exitChannel chan bool) {
+    for *numPhiDoneEating < NUM_PHILOSOPHERS {
+        select {
+        case finishedMeal := <- eatingPhiChannel:
+            if finishedMeal {
+                *(numPhiDoneEating)++
+            }
+        }
+    }
+    
+    exitChannel <- true
     return
 }
