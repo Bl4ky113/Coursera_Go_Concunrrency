@@ -2,12 +2,13 @@
 # University of California, Irvine
 
 Start: 10/01/2024
-End:
+End: 10/08/2024
 
 Sessions:
 - 10/01/2024
 - 10/03/2024
 - 10/07/2024
+- 10/08/2024
 
 ## What and Why Concurrency
 
